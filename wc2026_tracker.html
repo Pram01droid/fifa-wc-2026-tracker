@@ -39,6 +39,8 @@ header{
 .clk-date{font-size:11px;color:var(--muted)}
 .sync-st{font-size:9px;color:var(--dim);letter-spacing:.4px;white-space:nowrap;margin-top:2px}
 .sync-st.ok{color:var(--green)} .sync-st.busy{color:var(--gold)} .sync-st.err{color:var(--red)}
+.reset-link{font-size:9px;color:var(--dim);cursor:pointer;white-space:nowrap;margin-top:1px}
+.reset-link:hover{color:var(--muted);text-decoration:underline}
 .pip-btn{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);color:var(--muted);cursor:pointer;transition:all .15s;letter-spacing:.5px;text-transform:uppercase}
 .pip-btn:hover{color:var(--text);border-color:rgba(255,255,255,.2)}
 .pip-btn.active{background:var(--green);color:#000;border-color:var(--green)}
@@ -269,6 +271,7 @@ body.standalone .desktop-only.pip-desktop{display:none!important}
       <div class="clk-time" id="clkT">--:--:--</div>
       <div class="clk-date" id="clkD">---</div>
       <div class="sync-st" id="syncSt">↻ scores pending…</div>
+      <div class="reset-link" id="resetLink" title="Clear cached scores and manual score corrections, then reload">↺ reset data</div>
     </div>
   </div>
 </header>
@@ -316,7 +319,7 @@ body.standalone .desktop-only.pip-desktop{display:none!important}
 // compares it against the same constant in the copy on GitHub main so a
 // stale local/offline copy (this app has no auto-update path otherwise —
 // no server, often opened via file://) can tell the user it's outdated.
-const BUILD_ID = '2026-07-12.2';
+const BUILD_ID = '2026-07-12.3';
 const IST_OFF = 5.5*60*60*1000;
 const pad = n => String(n).padStart(2,'0');
 const DAYS_L = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -475,8 +478,16 @@ const TEAM_ALIASES={
 };
 function normTeam(n){return TEAM_ALIASES[n]||n;}
 function applyScore(id,patch,store){
-  if(isManualOverride(id)) return;
   const cur=store[id]||{};
+  if(isManualOverride(id)){
+    // A manual score correction is about the SCORE, not the team identity —
+    // still let the live feed teach us real team names for placeholder
+    // knockout slots (1A, 3rd:E, etc.) even when the score itself is locked.
+    if(patch.hName||patch.aName){
+      store[id]={...cur,...(patch.hName?{hName:patch.hName}:{}),...(patch.aName?{aName:patch.aName}:{})};
+    }
+    return;
+  }
   if(patch.finished||patch.live||!cur.finished) store[id]={...cur,...patch,updated:Date.now()};
 }
 function findMatchByTeamsKick(h,a,kickMs){
@@ -1331,6 +1342,14 @@ async function checkForUpdates(){
     if(m&&m[1]&&m[1]!==BUILD_ID) showUpdateBanner();
   }catch(e){ /* offline, blocked, or file:// with no network — skip silently */ }
 }
+function resetLiveData(){
+  const ok=confirm('This clears cached live scores and any manual score corrections you\'ve entered, then reloads the page. Use this if a match seems permanently stuck. Continue?');
+  if(!ok) return;
+  localStorage.removeItem('wc26_auto_results');
+  localStorage.removeItem('wc26_results');
+  localStorage.removeItem('wc26_fetch_meta');
+  location.reload();
+}
 
 /* ── BOOT ── */
 const IS_FLOAT_VIEW=['float','pip'].includes(new URLSearchParams(location.search).get('view'));
@@ -1341,6 +1360,7 @@ updateSyncStatus(bootMeta.ok?'ok':'',bootMeta.ok?`↻ scores synced ${getFetchAg
 updateClock(); updateHero(); updateProg(); updatePip();
 fetchScores();
 if(!IS_FLOAT_VIEW) checkForUpdates();
+document.getElementById('resetLink')?.addEventListener('click',resetLiveData);
 setInterval(()=>{updateClock();updateHero();updateProg();updatePip();},1000);
 setInterval(()=>{const el=document.getElementById('syncSt');if(el&&el.classList.contains('ok'))el.textContent=`↻ scores synced ${getFetchAgo()}`;},15000);
 if(!IS_FLOAT_VIEW) setInterval(render,60000);
