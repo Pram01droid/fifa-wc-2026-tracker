@@ -380,7 +380,7 @@ function matchResult(m){
 }
 function promptScore(m){
   const cur=matchResult(m);
-  const rh=resolveTeam(m.h), ra=resolveTeam(m.a);
+  const rh=resolveMatchSide(m,'h'), ra=resolveMatchSide(m,'a');
   const hName=rh.resolved?rh.name:(rh.label||m.h), aName=ra.resolved?ra.name:(ra.label||m.a);
   const inp=prompt(`Score for ${hName} vs ${aName}\n(format: 2-1, blank to clear)`,cur?`${cur.hs}-${cur.as}`:'');
   if(inp===null) return;
@@ -403,7 +403,7 @@ function promptScoreById(id){const m=MATCHES.find(x=>x.id===id);if(m)promptScore
 function teamSideHTML(m,side,result,isPast,isLive){
   const home=side==='h';
   const code=home?m.h:m.a;
-  const rt=resolveTeam(code);
+  const rt=resolveMatchSide(m,side);
   const name=rt.resolved?rt.name:(rt.label||code);
   const flag=rt.flag||'🏳️';
   let cls='team'+(home?'':' away')+(rt.resolved?'':' pending');
@@ -502,11 +502,14 @@ async function fetchScores(){
       const id=+g.id;
       const finished=g.finished==='TRUE'||g.finished===true;
       const live=!finished&&g.time_elapsed&&g.time_elapsed!=='notstarted';
-      if(!finished&&!live) return;
+      const hasNames=!!(g.home_team_name_en&&g.away_team_name_en);
+      if(!finished&&!live&&!hasNames) return;
       const patch={hs:+g.home_score,as:+g.away_score,live,finished,src:'wc26'};
-      if(finished&&+g.home_score===+g.away_score&&g.winner){
-        patch.psoWinner=(g.winner==='home'||g.winner===g.home_team)?'h':'a';
+      if(finished&&+g.home_score===+g.away_score&&g.home_penalty_score!=null&&g.away_penalty_score!=null){
+        patch.psoWinner=(+g.home_penalty_score>+g.away_penalty_score)?'h':'a';
       }
+      if(g.home_team_name_en) patch.hName=g.home_team_name_en;
+      if(g.away_team_name_en) patch.aName=g.away_team_name_en;
       applyScore(id,patch,store);
     });
     ok=true;
@@ -731,6 +734,16 @@ function resolveThird(slotGroup){
   return{name:team.name,flag:TEAM_FLAG[team.name]||'🏳️',resolved:true};
 }
 
+function matchNameOverride(id,side){
+  const auto=getAutoResults()[id];
+  if(!auto) return null;
+  return(side==='h'?auto.hName:auto.aName)||null;
+}
+function resolveMatchSide(m,side){
+  const ov=matchNameOverride(m.id,side);
+  if(ov) return{name:ov,flag:TEAM_FLAG[ov]||'🏳️',resolved:true};
+  return resolveTeam(side==='h'?m.h:m.a);
+}
 function resolveTeam(code){
   if(!code) return{name:null,flag:'🏳️',resolved:false,label:''};
   let m;
@@ -751,7 +764,7 @@ function resolveTeam(code){
     const side=decidedWinnerSide(mt);
     if(!side) return{name:null,flag:'🏳️',resolved:false,label:(wantWin?'Winner ':'Loser ')+mt.mn};
     const finalSide=wantWin?side:(side==='h'?'a':'h');
-    return resolveTeam(finalSide==='h'?mt.h:mt.a);
+    return resolveMatchSide(mt,finalSide);
   }
   return{name:code,flag:TEAM_FLAG[code]||'🏳️',resolved:true};
 }
@@ -893,7 +906,7 @@ function updateHero(){
   if(live){
     const el=Math.floor((now-istToMs(m.ist))/60000);
     const lr=matchResult(m);
-    const rh=resolveTeam(m.h), ra=resolveTeam(m.a);
+    const rh=resolveMatchSide(m,'h'), ra=resolveMatchSide(m,'a');
     const hN=rh.resolved?rh.name:(rh.label||m.h), aN=ra.resolved?ra.name:(ra.label||m.a);
     document.getElementById('hLbl').innerHTML='🔴 &nbsp;LIVE NOW';
     document.getElementById('hTeams').innerHTML=lr
@@ -907,7 +920,7 @@ function updateHero(){
     document.getElementById('hTimer').innerHTML=`<div class="timer"><div class="tu"><span class="tn" style="font-size:28px">≈${el}'</span><span class="tl">played</span></div></div>`;
   } else {
     const{dD,dH,dM,dS}=countdownParts(next.ist,now);
-    const rh=resolveTeam(next.h), ra=resolveTeam(next.a);
+    const rh=resolveMatchSide(next,'h'), ra=resolveMatchSide(next,'a');
     const hN=rh.resolved?rh.name:(rh.label||next.h), aN=ra.resolved?ra.name:(ra.label||next.a);
     document.getElementById('hLbl').textContent='NEXT MATCH';
     document.getElementById('hTeams').innerHTML=
@@ -945,7 +958,7 @@ function updateProg(){
 function pipTeamHTML(m,side,result,isPast){
   const home=side==='h';
   const code=home?m.h:m.a;
-  const rt=resolveTeam(code);
+  const rt=resolveMatchSide(m,side);
   const name=rt.resolved?rt.name:(rt.label||code);
   let cls='pip-team'+(home?'':' away')+(rt.resolved?'':' pending');
   if(rt.resolved&&result&&isPast&&result.winner!=='draw'){
