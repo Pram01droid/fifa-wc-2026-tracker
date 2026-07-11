@@ -1,4 +1,4 @@
-const CACHE = 'wc26-v2';
+const CACHE = 'wc26-v3';
 const ASSETS = [
   './wc2026_tracker.html',
   './wc2026_float.html',
@@ -18,19 +18,23 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+// Network-first for the tracked HTML/app assets — this app ships fixes and
+// data corrections regularly, and a stale cache would silently hide them
+// (as happened before: installed/offline copies kept serving old fixture
+// data indefinitely). Cache is only a fallback for when the network fails.
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
   if (url.origin !== self.location.origin) return;
+  const isTracked = ASSETS.some((a) => url.pathname.endsWith(a.replace('./', '')));
+  if (!isTracked) return;
   e.respondWith(
-    caches.match(e.request).then((cached) =>
-      cached || fetch(e.request).then((res) => {
-        if (res.ok && ASSETS.some((a) => url.pathname.endsWith(a.replace('./', '')))) {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, copy));
-        }
-        return res;
-      })
-    )
+    fetch(e.request).then((res) => {
+      if (res.ok) {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copy));
+      }
+      return res;
+    }).catch(() => caches.match(e.request))
   );
 });
