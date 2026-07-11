@@ -316,7 +316,7 @@ body.standalone .desktop-only.pip-desktop{display:none!important}
 // compares it against the same constant in the copy on GitHub main so a
 // stale local/offline copy (this app has no auto-update path otherwise —
 // no server, often opened via file://) can tell the user it's outdated.
-const BUILD_ID = '2026-07-12.1';
+const BUILD_ID = '2026-07-12.2';
 const IST_OFF = 5.5*60*60*1000;
 const pad = n => String(n).padStart(2,'0');
 const DAYS_L = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -1304,7 +1304,10 @@ function initPipWidget(){
 /* ── UPDATE CHECK ── */
 // No server/build pipeline here (often opened straight from disk), so the
 // only way to notice a stale copy is to diff BUILD_ID against GitHub main.
-const REPO_RAW_URL='https://raw.githubusercontent.com/Pram01droid/fifa-wc-2026-tracker/main/wc2026_tracker.html';
+// Uses the Contents API, not raw.githubusercontent.com: the raw CDN ignores
+// query strings for cache-busting and can serve a stale file for a long
+// time; the API respects normal HTTP caching (max-age=60s) instead.
+const REPO_API_URL='https://api.github.com/repos/Pram01droid/fifa-wc-2026-tracker/contents/wc2026_tracker.html?ref=main';
 const REPO_FILE_URL='https://github.com/Pram01droid/fifa-wc-2026-tracker/blob/main/wc2026_tracker.html';
 function showUpdateBanner(){
   if(document.getElementById('updateBanner')) return;
@@ -1319,9 +1322,11 @@ function showUpdateBanner(){
 }
 async function checkForUpdates(){
   try{
-    const res=await fetch(REPO_RAW_URL+'?t='+Date.now(),{cache:'no-store',signal:AbortSignal.timeout(8000)});
+    const res=await fetch(REPO_API_URL+'&_='+Date.now(),{cache:'no-store',signal:AbortSignal.timeout(8000),headers:{Accept:'application/vnd.github.v3+json'}});
     if(!res.ok) return;
-    const text=await res.text();
+    const data=await res.json();
+    if(!data.content) return;
+    const text=atob(data.content.replace(/\n/g,''));
     const m=text.match(/const BUILD_ID\s*=\s*'([^']+)'/);
     if(m&&m[1]&&m[1]!==BUILD_ID) showUpdateBanner();
   }catch(e){ /* offline, blocked, or file:// with no network — skip silently */ }
