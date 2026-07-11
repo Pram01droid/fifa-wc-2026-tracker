@@ -359,10 +359,11 @@ function getAutoResults(){try{return JSON.parse(localStorage.getItem('wc26_auto_
 function isManualOverride(id){const r=getManualResults()[id];return!!(r&&r.manual);}
 function buildResult(r){
   if(r.hs==null||r.as==null) return null;
-  return{hs:+r.hs,as:+r.as,winner:r.hs>r.as?'h':r.as>r.hs?'a':r.hs===r.as?'draw':null,live:!!r.live,finished:!!r.finished,manual:!!r.manual,src:r.src||'',psoWinner:r.psoWinner||null};
+  return{hs:+r.hs,as:+r.as,winner:r.hs>r.as?'h':r.as>r.hs?'a':r.hs===r.as?'draw':null,live:!!r.live,finished:!!r.finished,manual:!!r.manual,src:r.src||'',psoWinner:r.psoWinner||null,hPk:r.hPk??null,aPk:r.aPk??null};
 }
-function saveResult(id,hs,as,psoWinner){
-  const r=getManualResults(); r[id]={hs:+hs,as:+as,manual:true,finished:true,...(psoWinner?{psoWinner}:{})};
+function saveResult(id,hs,as,psoWinner,pk){
+  const r=getManualResults();
+  r[id]={hs:+hs,as:+as,manual:true,finished:true,...(psoWinner?{psoWinner}:{}),...(pk?{hPk:pk.h,aPk:pk.a}:{})};
   localStorage.setItem('wc26_results',JSON.stringify(r));
   clearStandingsCache(); render(); updateHero(); updatePip();
 }
@@ -389,7 +390,7 @@ function promptScore(m){
   if(!t){clearResult(m.id);return;}
   const p=t.match(/^(\d+)\s*[-–:]\s*(\d+)$/);
   if(!p){alert('Use format like 2-1');return;}
-  let psoWinner=null;
+  let psoWinner=null, pk=null;
   if(KO_STAGES.includes(m.g)&&p[1]===p[2]){
     const ans=prompt(`Level at ${p[1]}-${p[2]}. Who advances (won on penalties/extra time)?\nType "${hName}" or "${aName}"`,hName);
     if(ans===null) return;
@@ -397,8 +398,13 @@ function promptScore(m){
     if(ansT===String(hName).toLowerCase()) psoWinner='h';
     else if(ansT===String(aName).toLowerCase()) psoWinner='a';
     else{ alert('Enter the exact team name that advanced.'); return; }
+    const pkInp=prompt(`Penalty shootout score? (e.g. 4-3, blank if unknown)`,'');
+    if(pkInp&&pkInp.trim()){
+      const pm=pkInp.trim().match(/^(\d+)\s*[-–:]\s*(\d+)$/);
+      if(pm) pk={h:+pm[1],a:+pm[2]};
+    }
   }
-  saveResult(m.id,p[1],p[2],psoWinner);
+  saveResult(m.id,p[1],p[2],psoWinner,pk);
 }
 function promptScoreById(id){const m=MATCHES.find(x=>x.id===id);if(m)promptScore(m);}
 function effectiveWinner(result){
@@ -428,7 +434,9 @@ function scoreMidHTML(m,result,isLive,isPast){
     const win=effectiveWinner(result);
     const hCls=isLive?(leadH?' win':''):(win==='h'?' win':'');
     const aCls=isLive?(leadA?' win':''):(win==='a'?' win':'');
-    const pso=!isLive&&result.winner==='draw'&&result.psoWinner?'<span class="scpso">PEN</span>':'';
+    const pso=!isLive&&result.winner==='draw'&&result.psoWinner
+      ?`<span class="scpso">PEN${result.hPk!=null&&result.aPk!=null?` ${result.hPk}-${result.aPk}`:''}</span>`
+      :'';
     return`<div class="mscore${isLive?' live-sc':''}"><span class="sc${hCls}">${result.hs}</span><span class="scd">–</span><span class="sc${aCls}">${result.as}</span>${pso}</div>`;
   }
   return`<div class="mvs">${isLive?'● LIVE':'vs'}</div>`;
@@ -533,17 +541,19 @@ async function fetchScores(){
       if(!m) return;
       let hs=+g.home_score, as=+g.away_score;
       let hName=g.home_team_name_en||null, aName=g.away_team_name_en||null;
-      let pso=null;
+      let pso=null, hPk=null, aPk=null;
       if(finished&&hs===as&&g.home_penalty_score!=null&&g.away_penalty_score!=null){
-        pso=(+g.home_penalty_score>+g.away_penalty_score)?'h':'a';
+        hPk=+g.home_penalty_score; aPk=+g.away_penalty_score;
+        pso=hPk>aPk?'h':'a';
       }
       if(swapped){
         [hs,as]=[as,hs];
         [hName,aName]=[aName,hName];
+        [hPk,aPk]=[aPk,hPk];
         if(pso) pso=pso==='h'?'a':'h';
       }
       const patch={hs,as,live,finished,src:'wc26'};
-      if(pso) patch.psoWinner=pso;
+      if(pso){ patch.psoWinner=pso; patch.hPk=hPk; patch.aPk=aPk; }
       if(hName) patch.hName=hName;
       if(aName) patch.aName=aName;
       applyScore(m.id,patch,store);
@@ -662,43 +672,43 @@ const MATCHES=[
 {id:70,mn:'M70',ist:'2026-06-28T05:00',h:'DR Congo',hf:'🇨🇩',a:'Uzbekistan',af:'🇺🇿',venue:'Atlanta',city:'Atlanta, USA',g:'K',md:3},
 {id:71,mn:'M71',ist:'2026-06-28T07:30',h:'Algeria',hf:'🇩🇿',a:'Austria',af:'🇦🇹',venue:'Kansas City',city:'Kansas City, USA',g:'J',md:3},
 {id:72,mn:'M72',ist:'2026-06-28T07:30',h:'Jordan',hf:'🇯🇴',a:'Argentina',af:'🇦🇷',venue:'Dallas',city:'Dallas, USA',g:'J',md:3},
-/* ═══ ROUND OF 32 (M73–M88) — structure verified against the official bracket ═══ */
-{id:73, mn:'M73', ist:'2026-06-28T22:30',h:'2A',hf:'🏳️',a:'2B',af:'🏳️',venue:'',city:'',g:'R32',md:0},
-{id:74, mn:'M74', ist:'2026-06-29T01:30',h:'1E',hf:'🏳️',a:'3rd:E',af:'🏳️',venue:'',city:'',g:'R32',md:0},
-{id:75, mn:'M75', ist:'2026-06-29T04:30',h:'1F',hf:'🏳️',a:'2C',af:'🏳️',venue:'',city:'',g:'R32',md:0},
-{id:76, mn:'M76', ist:'2026-06-29T07:30',h:'1C',hf:'🏳️',a:'2F',af:'🏳️',venue:'',city:'',g:'R32',md:0},
-{id:77, mn:'M77', ist:'2026-06-30T22:30',h:'1I',hf:'🏳️',a:'3rd:I',af:'🏳️',venue:'',city:'',g:'R32',md:0},
-{id:78, mn:'M78', ist:'2026-06-30T01:30',h:'2E',hf:'🏳️',a:'2I',af:'🏳️',venue:'',city:'',g:'R32',md:0},
-{id:79, mn:'M79', ist:'2026-06-30T04:30',h:'1A',hf:'🏳️',a:'3rd:A',af:'🏳️',venue:'',city:'',g:'R32',md:0},
-{id:80, mn:'M80', ist:'2026-07-01T07:30',h:'1L',hf:'🏳️',a:'3rd:L',af:'🏳️',venue:'',city:'',g:'R32',md:0},
-{id:81, mn:'M81', ist:'2026-07-01T22:30',h:'1D',hf:'🏳️',a:'3rd:D',af:'🏳️',venue:'',city:'',g:'R32',md:0},
-{id:82, mn:'M82', ist:'2026-07-01T01:30',h:'1G',hf:'🏳️',a:'3rd:G',af:'🏳️',venue:'',city:'',g:'R32',md:0},
-{id:83, mn:'M83', ist:'2026-07-02T04:30',h:'2K',hf:'🏳️',a:'2L',af:'🏳️',venue:'',city:'',g:'R32',md:0},
-{id:84, mn:'M84', ist:'2026-07-02T07:30',h:'1H',hf:'🏳️',a:'2J',af:'🏳️',venue:'',city:'',g:'R32',md:0},
-{id:85, mn:'M85', ist:'2026-07-02T22:30',h:'1B',hf:'🏳️',a:'3rd:B',af:'🏳️',venue:'',city:'',g:'R32',md:0},
-{id:86, mn:'M86', ist:'2026-07-03T01:30',h:'1J',hf:'🏳️',a:'2H',af:'🏳️',venue:'',city:'',g:'R32',md:0},
-{id:87, mn:'M87', ist:'2026-07-03T04:30',h:'1K',hf:'🏳️',a:'3rd:K',af:'🏳️',venue:'',city:'',g:'R32',md:0},
-{id:88, mn:'M88', ist:'2026-07-03T07:30',h:'2D',hf:'🏳️',a:'2G',af:'🏳️',venue:'',city:'',g:'R32',md:0},
+/* ═══ ROUND OF 32 (M73–M88) — structure + times verified against the live schedule feed ═══ */
+{id:73, mn:'M73', ist:'2026-06-29T00:30',h:'2A',hf:'🏳️',a:'2B',af:'🏳️',venue:'Los Angeles',city:'Los Angeles, USA',g:'R32',md:0},
+{id:74, mn:'M74', ist:'2026-06-30T02:00',h:'1E',hf:'🏳️',a:'3rd:E',af:'🏳️',venue:'Boston',city:'Boston, USA',g:'R32',md:0},
+{id:75, mn:'M75', ist:'2026-06-30T06:30',h:'1F',hf:'🏳️',a:'2C',af:'🏳️',venue:'Monterrey',city:'Monterrey, MEX',g:'R32',md:0},
+{id:76, mn:'M76', ist:'2026-06-29T22:30',h:'1C',hf:'🏳️',a:'2F',af:'🏳️',venue:'Houston',city:'Houston, USA',g:'R32',md:0},
+{id:77, mn:'M77', ist:'2026-07-01T02:30',h:'1I',hf:'🏳️',a:'3rd:I',af:'🏳️',venue:'NY/NJ Stadium',city:'New Jersey, USA',g:'R32',md:0},
+{id:78, mn:'M78', ist:'2026-06-30T22:30',h:'2E',hf:'🏳️',a:'2I',af:'🏳️',venue:'Dallas',city:'Dallas, USA',g:'R32',md:0},
+{id:79, mn:'M79', ist:'2026-07-01T06:30',h:'1A',hf:'🏳️',a:'3rd:A',af:'🏳️',venue:'Mexico City',city:'Mexico City, MEX',g:'R32',md:0},
+{id:80, mn:'M80', ist:'2026-07-01T21:30',h:'1L',hf:'🏳️',a:'3rd:L',af:'🏳️',venue:'Atlanta',city:'Atlanta, USA',g:'R32',md:0},
+{id:81, mn:'M81', ist:'2026-07-02T05:30',h:'1D',hf:'🏳️',a:'3rd:D',af:'🏳️',venue:'SF Bay Area',city:'San Francisco, USA',g:'R32',md:0},
+{id:82, mn:'M82', ist:'2026-07-02T01:30',h:'1G',hf:'🏳️',a:'3rd:G',af:'🏳️',venue:'Seattle',city:'Seattle, USA',g:'R32',md:0},
+{id:83, mn:'M83', ist:'2026-07-03T04:30',h:'2K',hf:'🏳️',a:'2L',af:'🏳️',venue:'Toronto',city:'Toronto, CAN',g:'R32',md:0},
+{id:84, mn:'M84', ist:'2026-07-03T00:30',h:'1H',hf:'🏳️',a:'2J',af:'🏳️',venue:'Los Angeles',city:'Los Angeles, USA',g:'R32',md:0},
+{id:85, mn:'M85', ist:'2026-07-03T08:30',h:'1B',hf:'🏳️',a:'3rd:B',af:'🏳️',venue:'BC Place',city:'Vancouver, CAN',g:'R32',md:0},
+{id:86, mn:'M86', ist:'2026-07-04T03:30',h:'1J',hf:'🏳️',a:'2H',af:'🏳️',venue:'Miami',city:'Miami, USA',g:'R32',md:0},
+{id:87, mn:'M87', ist:'2026-07-04T07:00',h:'1K',hf:'🏳️',a:'3rd:K',af:'🏳️',venue:'Kansas City',city:'Kansas City, USA',g:'R32',md:0},
+{id:88, mn:'M88', ist:'2026-07-03T23:30',h:'2D',hf:'🏳️',a:'2G',af:'🏳️',venue:'Dallas',city:'Dallas, USA',g:'R32',md:0},
 /* ═══ ROUND OF 16 (M89–M96) ═══ */
-{id:89, mn:'M89', ist:'2026-07-04T22:30',h:'W74',hf:'🏳️',a:'W77',af:'🏳️',venue:'',city:'',g:'R16',md:0},
-{id:90, mn:'M90', ist:'2026-07-04T01:30',h:'W73',hf:'🏳️',a:'W75',af:'🏳️',venue:'',city:'',g:'R16',md:0},
-{id:91, mn:'M91', ist:'2026-07-05T04:30',h:'W76',hf:'🏳️',a:'W78',af:'🏳️',venue:'',city:'',g:'R16',md:0},
-{id:92, mn:'M92', ist:'2026-07-05T07:30',h:'W79',hf:'🏳️',a:'W80',af:'🏳️',venue:'',city:'',g:'R16',md:0},
-{id:93, mn:'M93', ist:'2026-07-06T22:30',h:'W87',hf:'🏳️',a:'W84',af:'🏳️',venue:'',city:'',g:'R16',md:0},
-{id:94, mn:'M94', ist:'2026-07-06T01:30',h:'W81',hf:'🏳️',a:'W82',af:'🏳️',venue:'',city:'',g:'R16',md:0},
-{id:95, mn:'M95', ist:'2026-07-07T04:30',h:'W86',hf:'🏳️',a:'W88',af:'🏳️',venue:'',city:'',g:'R16',md:0},
-{id:96, mn:'M96', ist:'2026-07-07T07:30',h:'W85',hf:'🏳️',a:'W83',af:'🏳️',venue:'',city:'',g:'R16',md:0},
+{id:89, mn:'M89', ist:'2026-07-05T02:30',h:'W74',hf:'🏳️',a:'W77',af:'🏳️',venue:'Philadelphia',city:'Philadelphia, USA',g:'R16',md:0},
+{id:90, mn:'M90', ist:'2026-07-04T22:30',h:'W73',hf:'🏳️',a:'W75',af:'🏳️',venue:'Houston',city:'Houston, USA',g:'R16',md:0},
+{id:91, mn:'M91', ist:'2026-07-06T01:30',h:'W76',hf:'🏳️',a:'W78',af:'🏳️',venue:'NY/NJ Stadium',city:'New Jersey, USA',g:'R16',md:0},
+{id:92, mn:'M92', ist:'2026-07-06T05:30',h:'W79',hf:'🏳️',a:'W80',af:'🏳️',venue:'Mexico City',city:'Mexico City, MEX',g:'R16',md:0},
+{id:93, mn:'M93', ist:'2026-07-07T00:30',h:'W87',hf:'🏳️',a:'W84',af:'🏳️',venue:'Dallas',city:'Dallas, USA',g:'R16',md:0},
+{id:94, mn:'M94', ist:'2026-07-07T05:30',h:'W81',hf:'🏳️',a:'W82',af:'🏳️',venue:'Seattle',city:'Seattle, USA',g:'R16',md:0},
+{id:95, mn:'M95', ist:'2026-07-07T21:30',h:'W86',hf:'🏳️',a:'W88',af:'🏳️',venue:'Atlanta',city:'Atlanta, USA',g:'R16',md:0},
+{id:96, mn:'M96', ist:'2026-07-08T01:30',h:'W85',hf:'🏳️',a:'W83',af:'🏳️',venue:'BC Place',city:'Vancouver, CAN',g:'R16',md:0},
 /* ═══ QUARTER-FINALS (M97–M100) ═══ */
-{id:97, mn:'M97', ist:'2026-07-09T01:30',h:'W89',hf:'🏳️',a:'W90',af:'🏳️',venue:'',city:'',g:'QF',md:0},
-{id:98, mn:'M98', ist:'2026-07-10T04:30',h:'W93',hf:'🏳️',a:'W94',af:'🏳️',venue:'',city:'',g:'QF',md:0},
-{id:99, mn:'M99', ist:'2026-07-11T01:30',h:'W91',hf:'🏳️',a:'W92',af:'🏳️',venue:'',city:'',g:'QF',md:0},
-{id:100,mn:'M100',ist:'2026-07-11T04:30',h:'W95',hf:'🏳️',a:'W96',af:'🏳️',venue:'',city:'',g:'QF',md:0},
+{id:97, mn:'M97', ist:'2026-07-10T01:30',h:'W89',hf:'🏳️',a:'W90',af:'🏳️',venue:'Boston',city:'Boston, USA',g:'QF',md:0},
+{id:98, mn:'M98', ist:'2026-07-11T00:30',h:'W93',hf:'🏳️',a:'W94',af:'🏳️',venue:'Los Angeles',city:'Los Angeles, USA',g:'QF',md:0},
+{id:99, mn:'M99', ist:'2026-07-12T02:30',h:'W91',hf:'🏳️',a:'W92',af:'🏳️',venue:'Miami',city:'Miami, USA',g:'QF',md:0},
+{id:100,mn:'M100',ist:'2026-07-12T06:30',h:'W95',hf:'🏳️',a:'W96',af:'🏳️',venue:'Kansas City',city:'Kansas City, USA',g:'QF',md:0},
 /* ═══ SEMI-FINALS (M101–M102) ═══ */
-{id:101,mn:'M101',ist:'2026-07-14T04:30',h:'W97',hf:'🏳️',a:'W98',af:'🏳️',venue:'',city:'',g:'SF',md:0},
-{id:102,mn:'M102',ist:'2026-07-15T04:30',h:'W99',hf:'🏳️',a:'W100',af:'🏳️',venue:'',city:'',g:'SF',md:0},
+{id:101,mn:'M101',ist:'2026-07-15T00:30',h:'W97',hf:'🏳️',a:'W98',af:'🏳️',venue:'Dallas',city:'Dallas, USA',g:'SF',md:0},
+{id:102,mn:'M102',ist:'2026-07-16T00:30',h:'W99',hf:'🏳️',a:'W100',af:'🏳️',venue:'Atlanta',city:'Atlanta, USA',g:'SF',md:0},
 /* ═══ BRONZE + FINAL ═══ */
-{id:103,mn:'M103',ist:'2026-07-18T05:30',h:'L101',hf:'🥉',a:'L102',af:'🥉',venue:'Miami',city:'Miami, USA',g:'B3',md:0},
-{id:104,mn:'M104',ist:'2026-07-19T05:30',h:'W101',hf:'🏆',a:'W102',af:'🏆',venue:'NY/NJ Stadium',city:'New Jersey, USA',g:'Final',md:0},
+{id:103,mn:'M103',ist:'2026-07-19T02:30',h:'L101',hf:'🥉',a:'L102',af:'🥉',venue:'Miami',city:'Miami, USA',g:'B3',md:0},
+{id:104,mn:'M104',ist:'2026-07-20T00:30',h:'W101',hf:'🏆',a:'W102',af:'🏆',venue:'NY/NJ Stadium',city:'New Jersey, USA',g:'Final',md:0},
 ];
 
 /* ── TEAM FLAGS (derived from group stage) ── */
