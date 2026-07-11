@@ -230,6 +230,19 @@ body.pip-only .pip-drag .pip-act.pop,body.pip-only .pip-drag,body.float-only .pi
 }
 body.is-app .float-pin-bar,body.is-app .pip-drag .pip-act{display:none}
 body.standalone .desktop-only.pip-desktop{display:none!important}
+
+/* update banner */
+.update-banner{
+  background:linear-gradient(135deg,#3a2a00,#4a3400);border-bottom:1px solid rgba(255,193,7,.35);
+  color:var(--text);font-size:13px;padding:9px 16px;display:flex;align-items:center;justify-content:center;
+  gap:10px;text-align:center;flex-wrap:wrap;
+}
+.update-banner a{color:var(--gold);font-weight:700;text-decoration:underline}
+.update-banner button{
+  background:transparent;border:1px solid rgba(255,255,255,.25);color:var(--muted);border-radius:5px;
+  width:22px;height:22px;cursor:pointer;line-height:1;flex-shrink:0;
+}
+.update-banner button:hover{color:var(--text);border-color:rgba(255,255,255,.5)}
 </style>
 </head>
 <body>
@@ -299,6 +312,11 @@ body.standalone .desktop-only.pip-desktop{display:none!important}
 
 <script>
 /* ── UTILS ── */
+// Bump this string with every content change that ships. checkForUpdates()
+// compares it against the same constant in the copy on GitHub main so a
+// stale local/offline copy (this app has no auto-update path otherwise —
+// no server, often opened via file://) can tell the user it's outdated.
+const BUILD_ID = '2026-07-12.1';
 const IST_OFF = 5.5*60*60*1000;
 const pad = n => String(n).padStart(2,'0');
 const DAYS_L = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -529,15 +547,16 @@ async function fetchScores(){
       const hasNames=!!(g.home_team_name_en&&g.away_team_name_en);
       if(!finished&&!live&&!hasNames) return;
       // Group-stage fixtures: match by team pair — this source's own numbering
-      // doesn't line up with our match ids. Knockouts: its id numbering does.
+      // doesn't line up with our match ids. Try this first regardless of the
+      // group field's exact format; knockout placeholders (h/a are codes,
+      // not names) simply won't match anything here and fall through to id.
       let m,swapped=false;
-      if('ABCDEFGHIJKL'.includes(g.group)){
-        const h=normTeam(g.home_team_name_en||''), a=normTeam(g.away_team_name_en||'');
+      if(hasNames){
+        const h=normTeam(g.home_team_name_en), a=normTeam(g.away_team_name_en);
         m=findGroupMatchByTeams(h,a);
         if(m) swapped=(m.h===a&&m.a===h);
-      } else {
-        m=MATCHES.find(x=>x.id===+g.id);
       }
+      if(!m) m=MATCHES.find(x=>x.id===+g.id);
       if(!m) return;
       let hs=+g.home_score, as=+g.away_score;
       let hName=g.home_team_name_en||null, aName=g.away_team_name_en||null;
@@ -1282,6 +1301,32 @@ function initPipWidget(){
   }
 }
 
+/* ── UPDATE CHECK ── */
+// No server/build pipeline here (often opened straight from disk), so the
+// only way to notice a stale copy is to diff BUILD_ID against GitHub main.
+const REPO_RAW_URL='https://raw.githubusercontent.com/Pram01droid/fifa-wc-2026-tracker/main/wc2026_tracker.html';
+const REPO_FILE_URL='https://github.com/Pram01droid/fifa-wc-2026-tracker/blob/main/wc2026_tracker.html';
+function showUpdateBanner(){
+  if(document.getElementById('updateBanner')) return;
+  const b=document.createElement('div');
+  b.id='updateBanner';
+  b.className='update-banner';
+  b.innerHTML=`⬆️ A newer version of this tracker is available — you're on an outdated copy.
+    <a href="${REPO_FILE_URL}" target="_blank" rel="noopener">Get the latest copy</a>
+    <button id="dismissUpdateBanner" title="Dismiss" aria-label="Dismiss">✕</button>`;
+  document.body.prepend(b);
+  document.getElementById('dismissUpdateBanner').onclick=()=>b.remove();
+}
+async function checkForUpdates(){
+  try{
+    const res=await fetch(REPO_RAW_URL+'?t='+Date.now(),{cache:'no-store',signal:AbortSignal.timeout(8000)});
+    if(!res.ok) return;
+    const text=await res.text();
+    const m=text.match(/const BUILD_ID\s*=\s*'([^']+)'/);
+    if(m&&m[1]&&m[1]!==BUILD_ID) showUpdateBanner();
+  }catch(e){ /* offline, blocked, or file:// with no network — skip silently */ }
+}
+
 /* ── BOOT ── */
 const IS_FLOAT_VIEW=['float','pip'].includes(new URLSearchParams(location.search).get('view'));
 if(!IS_FLOAT_VIEW){renderFilters(); render();}
@@ -1290,6 +1335,7 @@ const bootMeta=JSON.parse(localStorage.getItem('wc26_fetch_meta')||'{}');
 updateSyncStatus(bootMeta.ok?'ok':'',bootMeta.ok?`↻ scores synced ${getFetchAgo()}`:'↻ scores pending…');
 updateClock(); updateHero(); updateProg(); updatePip();
 fetchScores();
+if(!IS_FLOAT_VIEW) checkForUpdates();
 setInterval(()=>{updateClock();updateHero();updateProg();updatePip();},1000);
 setInterval(()=>{const el=document.getElementById('syncSt');if(el&&el.classList.contains('ok'))el.textContent=`↻ scores synced ${getFetchAgo()}`;},15000);
 if(!IS_FLOAT_VIEW) setInterval(render,60000);
