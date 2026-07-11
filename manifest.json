@@ -1,0 +1,25 @@
+{
+  "name": "FIFA World Cup 2026 — IST Tracker",
+  "short_name": "WC 2026",
+  "description": "Live World Cup 2026 match tracker in India Standard Time",
+  "start_url": "./wc2026_tracker.html?view=float",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#06091C",
+  "theme_color": "#00E676",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

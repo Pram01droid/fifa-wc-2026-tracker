@@ -1,0 +1,14 @@
+{
+  "name": "wc2026-tracker",
+  "version": "1.0.0",
+  "description": "FIFA World Cup 2026 IST tracker — always-on-top desktop float",
+  "main": "electron-main.js",
+  "scripts": {
+    "start": "electron .",
+    "float": "electron .",
+    "serve": "npx --yes serve -l 3000 ."
+  },
+  "devDependencies": {
+    "electron": "^33.2.0"
+  }
+}
